@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include "esp_wifi.h"
 #include "esp_now.h"
+#include "esp_mac.h"
 
 static const char *TAG = "espnow";
 
@@ -26,6 +27,21 @@ int espnow_init()
     ESP_LOGI(TAG, "Initializing ESP-NOW");
     ESP_ERROR_CHECK(esp_now_init());
     return 0;
+}
+
+static void espnow_send_cb(const uint8_t *mac_addr, esp_now_send_status_t status)
+{
+    if (status == ESP_NOW_SEND_SUCCESS) {
+        ESP_LOGI(TAG, "Sent data to %x%x%x%x%x%x", MAC2STR(mac_addr));
+    } else {
+        ESP_LOGE(TAG, "Failed to send data to %x%x%x%x%x%x", MAC2STR(mac_addr));
+    }
+}
+
+static void espnow_recv_cb(const uint8_t *mac_addr, const uint8_t *data, int len)
+{
+    ESP_LOGI(TAG, "Received data");
+
 }
 
 int espnow_send()

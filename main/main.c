@@ -1,34 +1,28 @@
-/* Blink Example
-
-   This example code is in the Public Domain (or CC0 licensed, at your option.)
-
-   Unless required by applicable law or agreed to in writing, this
-   software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-   CONDITIONS OF ANY KIND, either express or implied.
-*/
 #include <stdio.h>
+#include "driver/gpio.h"
+#include "esp_log.h"
+#include "esp_mac.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "driver/gpio.h"
-#include "esp_mac.h"
-#include "esp_log.h"
 #include "led_strip.h"
 #include "nvs_flash.h"
 #include "sdkconfig.h"
-#include "led.h"
-#include "espnow.h"
+
 #include "config.h"
+#include "espnow.h"
+#include "led.h"
+#include "state.h"
 
 static const char *TAG = "main";
-static uint8_t s_button_state = 1;
 static uint8_t is_receiver = 0;
+volatile enum prog_state transition_state = STATE_INIT;
 
 
 void setup_pins() {
-    gpio_reset_pin(BUTTON_GPIO);
-    gpio_set_direction(BUTTON_GPIO, GPIO_MODE_INPUT);
-    gpio_reset_pin(RECEIVER_GPIO);
-    gpio_set_direction(RECEIVER_GPIO, GPIO_MODE_INPUT);
+    ESP_ERROR_CHECK(gpio_reset_pin(BUTTON_GPIO));
+    ESP_ERROR_CHECK(gpio_set_direction(BUTTON_GPIO, GPIO_MODE_INPUT));
+    ESP_ERROR_CHECK(gpio_reset_pin(RECEIVER_GPIO));
+    ESP_ERROR_CHECK(gpio_set_direction(RECEIVER_GPIO, GPIO_MODE_INPUT));
 }
 
 void init_nvs() {
@@ -40,21 +34,49 @@ void init_nvs() {
     ESP_ERROR_CHECK(ret);
 }
 
+void handle_usrbutton_isr(void* arg) {
+    int gpio_num = (int)arg;
+    int state = !gpio_get_level(gpio_num); // pull up: button connects to ground
+    switch (transition_state) {
+        case STATE_READY:
+            if (state) {
+                transition_state = STATE_SENDRECV;
+            }
+            break;
+        default:
+            break;
+    }
+}
+
+const char *state_str(enum prog_state state) {
+    switch (state) {
+        case STATE_INIT:
+            return "INIT";
+        case STATE_READY:
+            return "READY";
+        case STATE_SENDRECV:
+            return "SENDRECV";
+        default:
+            return "UNKNOWN";
+    }
+}
 
 void app_main(void) {
     esp_err_t ret;
     uint8_t base_mac_addr[6] = {0};
 
+    esp_log_level_set("led handler", ESP_LOG_DEBUG);
     configure_led();
     setup_pins();
     init_nvs();
 
     is_receiver = !gpio_get_level(RECEIVER_GPIO);
 
-    ESP_ERROR_CHECK(esp_read_mac(base_mac_addr, ESP_MAC_WIFI_STA));
-
-    ESP_LOGI(TAG, "Device is %s", is_receiver ? "receiver" : "sender");
-    ESP_LOGI(TAG, "MAC: %x%x%x%x%x%x", base_mac_addr[0], base_mac_addr[1], base_mac_addr[2], base_mac_addr[3], base_mac_addr[4], base_mac_addr[5]);
+    // ISRs
+    ESP_LOGI(TAG, "ISR setup");
+    ESP_ERROR_CHECK(gpio_install_isr_service(0));
+    ESP_ERROR_CHECK(gpio_set_intr_type(BUTTON_GPIO, GPIO_INTR_NEGEDGE));
+    ESP_ERROR_CHECK(gpio_isr_handler_add(BUTTON_GPIO, handle_usrbutton_isr, (void *)BUTTON_GPIO));
 
     if (WL_PROTO == WL_PROTO_ESPNOW) {
         if (espnow_init() != 0) {
@@ -67,20 +89,36 @@ void app_main(void) {
         return;
     }
 
+    // output MAC addr
+    ESP_ERROR_CHECK(esp_read_mac(base_mac_addr, ESP_MAC_WIFI_STA));
+    ESP_LOGI(TAG, "Device is %s", is_receiver ? "receiver" : "sender");
+    ESP_LOGI(TAG, "MAC: %x%x%x%x%x%x", base_mac_addr[0], base_mac_addr[1], base_mac_addr[2], base_mac_addr[3], base_mac_addr[4], base_mac_addr[5]);
+
     ESP_LOGI(TAG, "Initialized");
-    led_set_ready(is_receiver);
+    static enum prog_state current_state = STATE_INIT;
+    transition_state = STATE_READY;
 
     while (1) {
-        if (gpio_get_level(BUTTON_GPIO) != s_button_state) {
-            if (gpio_get_level(BUTTON_GPIO)) {
-                led_set_ready();
-            } else {
-                led_set_active();
-                espnow_send();
-                led_set_ready();
+        // handle state change
+        enum prog_state cycle_state = transition_state; // we need to read once in case state changes during handle
+        if (cycle_state != current_state) {
+            ESP_LOGI(TAG, "Handling state transition %s -> %s", state_str(current_state), state_str(cycle_state));
+            current_state = cycle_state;
+            switch (cycle_state) {
+                case STATE_READY:
+                    led_set_ready(0);
+                    break;
+                case STATE_SENDRECV:
+                    led_set_active();
+                    espnow_send();
+                    vTaskDelay(1000 / portTICK_PERIOD_MS);
+                    ESP_LOGI(TAG, "done");
+                    break;
+                default:
+                    break;
             }
-            s_button_state = gpio_get_level(BUTTON_GPIO);
         }
+        transition_state = STATE_READY;
         vTaskDelay(100 / portTICK_PERIOD_MS);
     }
 }

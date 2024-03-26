@@ -13,7 +13,7 @@ uint8_t led_rgb_state[3] = {0, 0, 0};
 
 void configure_led(void)
 {
-    ESP_LOGI("led handler", "LED configured");
+    ESP_LOGI(TAG, "LED configured");
     /* LED strip initialization with the GPIO and pixels number*/
     led_strip_config_t strip_config = {
         .strip_gpio_num = BLINK_GPIO,
@@ -46,11 +46,6 @@ void led_set_ready(int is_receiver)
 {
     ESP_LOGD(TAG, "LED ready state");
     current_led_state = LED_READY;
-    // for (uint i = 0; i < 255; i++)
-    // {
-    //     set_state(i, 0, 0);
-    //     vTaskDelay(100 / portTICK_PERIOD_MS);
-    // }
     if (is_receiver)
     {
         set_state(0, 16, 0);
