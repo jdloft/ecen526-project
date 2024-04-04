@@ -96,7 +96,7 @@ void app_main(void) {
 
     // wireless
     if (WL_PROTO == WL_PROTO_ESPNOW) {
-        if (espnow_init() != 0) {
+        if (wirelesscomm_espnow_init() != 0) {
             ESP_LOGE(TAG, "Error initializing");
             led_set_fault();
             return;
@@ -126,9 +126,7 @@ void app_main(void) {
                     led_set_ready(0);
                     break;
                 case STATE_SENDRECV:
-                    led_set_active();
-                    espnow_send();
-                    vTaskDelay(1000 / portTICK_PERIOD_MS);
+                    wirelesscomm_espnow_send();
                     ESP_LOGI(TAG, "done");
                     break;
                 default:

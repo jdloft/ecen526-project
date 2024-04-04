@@ -1,35 +1,66 @@
-#include "esp_log.h"
-#include "espnow.h"
+#include <stdlib.h>
+#include <string.h>
+#include <sys/time.h>
 #include <unistd.h>
-#include "esp_wifi.h"
-#include "esp_now.h"
+#include "esp_log.h"
 #include "esp_mac.h"
+#include "esp_now.h"
+#include "esp_wifi.h"
+#include "espnow.h"
+#include "led.h"
 
 static const char *TAG = "espnow";
 
-#define RECV_MAC = {}
-#define CHANNEL 1
+const uint8_t broadcast_mac[ESP_NOW_ETH_ALEN] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+// 404cca438dcc
+const uint8_t recv_mac1[ESP_NOW_ETH_ALEN] = { 0x40, 0x4c, 0xca, 0x43, 0x8d, 0xcc };
+const uint8_t recv_mac2[ESP_NOW_ETH_ALEN] = { 0x40, 0x4c, 0xca, 0x43, 0x8c, 0xc4 };
+uint8_t* recv_mac;
 
-static uint8_t broadcast_mac[ESP_NOW_ETH_ALEN] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
-// static uint8_t recv_mac[ESP_NOW_ETH_ALEN] = {};
+static void wirelesscomm_espnow_send_cb(const uint8_t *mac_addr, esp_now_send_status_t status);
+static void wirelesscomm_espnow_recv_cb(const uint8_t *mac_addr, const uint8_t *data, int len);
 
-int espnow_init()
-{
+static void wifi_init() {
     ESP_LOGI(TAG, "Initializing Wi-Fi");
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
     ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_start());
-    ESP_ERROR_CHECK(esp_wifi_set_channel(CHANNEL, WIFI_SECOND_CHAN_NONE));
+    ESP_ERROR_CHECK(esp_wifi_set_channel(CONFIG_WIFI_CHANNEL, WIFI_SECOND_CHAN_NONE));
+    // long range?
     // ESP_ERROR_CHECK(esp_wifi_set_protocol(ESP_IF_WIFI_AP, WIFI_PROTOCOL_11B|WIFI_PROTOCOL_11G|WIFI_PROTOCOL_11N|WIFI_PROTOCOL_LR));
+}
 
+int wirelesscomm_espnow_init()
+{
+    wifi_init();
     ESP_LOGI(TAG, "Initializing ESP-NOW");
     ESP_ERROR_CHECK(esp_now_init());
+
+    // set recv mac
+    uint8_t my_mac[ESP_NOW_ETH_ALEN] = {0};
+    ESP_ERROR_CHECK(esp_read_mac(my_mac, ESP_MAC_WIFI_STA));
+    if (memcmp(my_mac, recv_mac1, ESP_NOW_ETH_ALEN) == 0) {
+        recv_mac = &recv_mac2;
+    } else {
+        recv_mac = &recv_mac1;
+    }
+
+    esp_now_peer_info_t *peer_info = malloc(sizeof(esp_now_peer_info_t));
+    memset(peer_info, 0, sizeof(esp_now_peer_info_t));
+    peer_info->channel = CONFIG_WIFI_CHANNEL;
+    peer_info->ifidx = ESP_IF_WIFI_STA;
+    peer_info->encrypt = false;
+    memcpy(peer_info->peer_addr, recv_mac, ESP_NOW_ETH_ALEN);
+    ESP_ERROR_CHECK(esp_now_add_peer(peer_info));
+
+    ESP_ERROR_CHECK(esp_now_register_send_cb(wirelesscomm_espnow_send_cb));
+    ESP_ERROR_CHECK(esp_now_register_recv_cb(wirelesscomm_espnow_recv_cb));
     return 0;
 }
 
-static void espnow_send_cb(const uint8_t *mac_addr, esp_now_send_status_t status)
+static void wirelesscomm_espnow_send_cb(const uint8_t *mac_addr, esp_now_send_status_t status)
 {
     if (status == ESP_NOW_SEND_SUCCESS) {
         ESP_LOGI(TAG, "Sent data to %x%x%x%x%x%x", MAC2STR(mac_addr));
@@ -38,14 +69,22 @@ static void espnow_send_cb(const uint8_t *mac_addr, esp_now_send_status_t status
     }
 }
 
-static void espnow_recv_cb(const uint8_t *mac_addr, const uint8_t *data, int len)
+static void wirelesscomm_espnow_recv_cb(const uint8_t *mac_addr, const uint8_t *data, int len)
 {
-    ESP_LOGI(TAG, "Received data");
-
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    led_set(LED_ACTIVE);
+    struct timeval recv_tv = *(struct timeval *)data;
+    ESP_LOGI(TAG, "Received data. Time: %lld.%06ld", tv.tv_sec, tv.tv_usec);
+    ESP_LOGI(TAG, "Elapsed time: %lld.%06ld", tv.tv_sec - recv_tv.tv_sec, tv.tv_usec - recv_tv.tv_usec);
+    led_set(LED_READY);
 }
 
-int espnow_send()
+int wirelesscomm_espnow_send()
 {
     ESP_LOGI(TAG, "Sending data via ESP-NOW");
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    ESP_ERROR_CHECK(esp_now_send(*recv_mac, (uint8_t *)&tv, sizeof(tv)));
     return 0;
 }

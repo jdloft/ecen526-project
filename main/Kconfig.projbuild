@@ -13,6 +13,13 @@ menu "Project Settings"
             GPIO number (IOxx) to blink on and off or the RMT signal for the addressable LED.
             Some GPIOs are used for other purposes (flash connections, etc.) and cannot be used to blink.
 
+    config WIFI_CHANNEL
+        int "WiFi Channel"
+        range 1 13
+        default 1
+        help
+            WiFi channel to use for the ESP32 station interface.
+
     config TIME_WIFI_SSID
         string "WiFi SSID"
         default "myssid"
