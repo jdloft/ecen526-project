@@ -69,6 +69,7 @@ void app_main(void) {
 
     esp_log_level_set("led handler", ESP_LOG_DEBUG);
     configure_led();
+    led_set(LED_INIT);
     setup_pins();
     init_nvs();
 
@@ -87,7 +88,7 @@ void app_main(void) {
         ESP_LOGI(TAG, "Time not set, syncing");
         if (wirelesscomm_time_init() != ESP_OK) {
             ESP_LOGE(TAG, "Error syncing time");
-            led_set_fault();
+            led_set(LED_FAULT);
             return;
         }
     } else {
@@ -98,7 +99,7 @@ void app_main(void) {
     if (WL_PROTO == WL_PROTO_ESPNOW) {
         if (wirelesscomm_espnow_init() != 0) {
             ESP_LOGE(TAG, "Error initializing");
-            led_set_fault();
+            led_set(LED_FAULT);
             return;
         }
     } else {
@@ -111,6 +112,7 @@ void app_main(void) {
     ESP_LOGI(TAG, "Device is %s", is_receiver ? "receiver" : "sender");
     ESP_LOGI(TAG, "MAC: %x%x%x%x%x%x", base_mac_addr[0], base_mac_addr[1], base_mac_addr[2], base_mac_addr[3], base_mac_addr[4], base_mac_addr[5]);
 
+    // initialization complete, do stuff
     ESP_LOGI(TAG, "Initialized");
     static enum prog_state current_state = STATE_INIT;
     transition_state = STATE_READY;
@@ -123,9 +125,10 @@ void app_main(void) {
             current_state = cycle_state;
             switch (cycle_state) {
                 case STATE_READY:
-                    led_set_ready(0);
+                    led_set(LED_READY);
                     break;
                 case STATE_SENDRECV:
+                    led_set(LED_ACTIVE);
                     wirelesscomm_espnow_send();
                     ESP_LOGI(TAG, "done");
                     break;

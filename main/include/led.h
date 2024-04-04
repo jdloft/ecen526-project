@@ -1,20 +1,18 @@
 #ifndef __LED_H__
 #define __LED_H__
 
-enum led_state {
+typedef enum {
     LED_OFF,
+    LED_INIT,
     LED_READY,
-    LED_RECV,
+    LED_ACTIVE,
     LED_FAULT
-};
-extern enum led_state current_led_state;
+} wirelesscomm_led_state_t;
+extern wirelesscomm_led_state_t current_led_state;
 
 
 void configure_led(void);
 void led_reset();
-void led_set_ready(int);
-void led_set_active();
-void led_set_fault();
-void blink_led();
+void led_set(wirelesscomm_led_state_t state);
 
 #endif // __LED_H__
