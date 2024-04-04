@@ -20,6 +20,18 @@ menu "Project Settings"
         help
             WiFi channel to use for the ESP32 station interface.
 
+    config PEER_MAC1
+        string "Peer MAC 1"
+        default "00:00:00:00:00:00"
+        help
+            MAC address of the first peer
+
+    config PEER_MAC2
+        string "Peer MAC 2"
+        default "00:00:00:00:00:00"
+        help
+            MAC address of the second peer
+
     config TIME_WIFI_SSID
         string "WiFi SSID"
         default "myssid"

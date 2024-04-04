@@ -11,11 +11,8 @@
 
 static const char *TAG = "espnow";
 
-const uint8_t broadcast_mac[ESP_NOW_ETH_ALEN] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
-// 404cca438dcc
-const uint8_t recv_mac1[ESP_NOW_ETH_ALEN] = { 0x40, 0x4c, 0xca, 0x43, 0x8d, 0xcc };
-const uint8_t recv_mac2[ESP_NOW_ETH_ALEN] = { 0x40, 0x4c, 0xca, 0x43, 0x8c, 0xc4 };
-uint8_t* recv_mac;
+__unused static const uint8_t broadcast_mac[ESP_NOW_ETH_ALEN] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+static uint8_t recv_mac[ESP_NOW_ETH_ALEN];
 
 static void wirelesscomm_espnow_send_cb(const uint8_t *mac_addr, esp_now_send_status_t status);
 static void wirelesscomm_espnow_recv_cb(const uint8_t *mac_addr, const uint8_t *data, int len);
@@ -32,6 +29,14 @@ static void wifi_init() {
     // ESP_ERROR_CHECK(esp_wifi_set_protocol(ESP_IF_WIFI_AP, WIFI_PROTOCOL_11B|WIFI_PROTOCOL_11G|WIFI_PROTOCOL_11N|WIFI_PROTOCOL_LR));
 }
 
+static inline void mac_to_string(const uint8_t *mac, char *buf) {
+    sprintf(buf, "%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+}
+
+static inline void string_to_mac(const char *str, uint8_t *mac) {
+    sscanf(str, "%02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx", &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5]);
+}
+
 int wirelesscomm_espnow_init()
 {
     wifi_init();
@@ -39,12 +44,19 @@ int wirelesscomm_espnow_init()
     ESP_ERROR_CHECK(esp_now_init());
 
     // set recv mac
+    uint8_t peer1[ESP_NOW_ETH_ALEN];
+    uint8_t peer2[ESP_NOW_ETH_ALEN];
+    string_to_mac(CONFIG_PEER_MAC1, &peer1);
+    string_to_mac(CONFIG_PEER_MAC2, &peer2);
+
     uint8_t my_mac[ESP_NOW_ETH_ALEN] = {0};
     ESP_ERROR_CHECK(esp_read_mac(my_mac, ESP_MAC_WIFI_STA));
-    if (memcmp(my_mac, recv_mac1, ESP_NOW_ETH_ALEN) == 0) {
-        recv_mac = &recv_mac2;
+    if (memcmp(my_mac, peer1, ESP_NOW_ETH_ALEN) == 0) {
+        ESP_LOGI(TAG, "Setting peer to %s", CONFIG_PEER_MAC2);
+        memcpy(recv_mac, peer2, ESP_NOW_ETH_ALEN);
     } else {
-        recv_mac = &recv_mac1;
+        ESP_LOGI(TAG, "Setting peer to %s", CONFIG_PEER_MAC1);
+        memcpy(recv_mac, peer1, ESP_NOW_ETH_ALEN);
     }
 
     esp_now_peer_info_t *peer_info = malloc(sizeof(esp_now_peer_info_t));
@@ -85,6 +97,6 @@ int wirelesscomm_espnow_send()
     ESP_LOGI(TAG, "Sending data via ESP-NOW");
     struct timeval tv;
     gettimeofday(&tv, NULL);
-    ESP_ERROR_CHECK(esp_now_send(*recv_mac, (uint8_t *)&tv, sizeof(tv)));
+    ESP_ERROR_CHECK(esp_now_send(recv_mac, (uint8_t *)&tv, sizeof(tv)));
     return 0;
 }
