@@ -13,4 +13,22 @@ menu "Project Settings"
             GPIO number (IOxx) to blink on and off or the RMT signal for the addressable LED.
             Some GPIOs are used for other purposes (flash connections, etc.) and cannot be used to blink.
 
+    config TIME_WIFI_SSID
+        string "WiFi SSID"
+        default "myssid"
+        help
+            WiFi SSID to connect to for SNTP time synchronization.
+
+    config TIME_WIFI_PASSWORD
+        string "WiFi Password"
+        default "mypassword"
+        help
+            WiFi password to connect to for SNTP time synchronization.
+
+    config TIME_NTP_SERVER
+        string "NTP Server"
+        default "pool.ntp.org"
+        help
+            NTP server to use for time synchronization.
+
 endmenu

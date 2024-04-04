@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <sys/time.h>
 #include "driver/gpio.h"
 #include "esp_log.h"
 #include "esp_mac.h"
@@ -12,6 +13,7 @@
 #include "espnow.h"
 #include "led.h"
 #include "state.h"
+#include "timesync.h"
 
 static const char *TAG = "main";
 static uint8_t is_receiver = 0;
@@ -78,6 +80,21 @@ void app_main(void) {
     ESP_ERROR_CHECK(gpio_set_intr_type(BUTTON_GPIO, GPIO_INTR_NEGEDGE));
     ESP_ERROR_CHECK(gpio_isr_handler_add(BUTTON_GPIO, handle_usrbutton_isr, (void *)BUTTON_GPIO));
 
+    // time sync
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    if (tv.tv_sec < 60) {
+        ESP_LOGI(TAG, "Time not set, syncing");
+        if (wirelesscomm_time_init() != ESP_OK) {
+            ESP_LOGE(TAG, "Error syncing time");
+            led_set_fault();
+            return;
+        }
+    } else {
+        ESP_LOGI(TAG, "Time already set: %lld.%06ld", tv.tv_sec, tv.tv_usec);
+    }
+
+    // wireless
     if (WL_PROTO == WL_PROTO_ESPNOW) {
         if (espnow_init() != 0) {
             ESP_LOGE(TAG, "Error initializing");
