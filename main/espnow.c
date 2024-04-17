@@ -75,7 +75,9 @@ int wirelesscomm_espnow_init()
 static void wirelesscomm_espnow_send_cb(const uint8_t *mac_addr, esp_now_send_status_t status)
 {
     if (status == ESP_NOW_SEND_SUCCESS) {
-        ESP_LOGI(TAG, "Sent data to %x%x%x%x%x%x", MAC2STR(mac_addr));
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        ESP_LOGI(TAG, "Sent data to %x%x%x%x%x%x. Time: %lld.%06ld", MAC2STR(mac_addr), tv.tv_sec, tv.tv_usec);
     } else {
         ESP_LOGE(TAG, "Failed to send data to %x%x%x%x%x%x", MAC2STR(mac_addr));
     }
@@ -88,7 +90,7 @@ static void wirelesscomm_espnow_recv_cb(const uint8_t *mac_addr, const uint8_t *
     led_set(LED_ACTIVE);
     struct timeval recv_tv = *(struct timeval *)data;
     ESP_LOGI(TAG, "Received data. Time: %lld.%06ld", tv.tv_sec, tv.tv_usec);
-    ESP_LOGI(TAG, "Elapsed time: %lld.%06ld", tv.tv_sec - recv_tv.tv_sec, tv.tv_usec - recv_tv.tv_usec);
+    ESP_LOGI(TAG, "Elapsed time: %ld microseconds", tv.tv_usec - recv_tv.tv_usec);
     led_set(LED_READY);
 }
 

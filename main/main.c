@@ -3,6 +3,7 @@
 #include "driver/gpio.h"
 #include "esp_log.h"
 #include "esp_mac.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "led_strip.h"
@@ -18,6 +19,7 @@
 static const char *TAG = "main";
 static uint8_t is_receiver = 0;
 volatile enum prog_state transition_state = STATE_INIT;
+esp_timer_handle_t send_timer;
 
 
 void setup_pins() {
@@ -50,6 +52,10 @@ void handle_usrbutton_isr(void* arg) {
     }
 }
 
+void handle_sendtimer_isr(void* arg) {
+    transition_state = STATE_SENDRECV;
+}
+
 const char *state_str(enum prog_state state) {
     switch (state) {
         case STATE_INIT:
@@ -65,7 +71,7 @@ const char *state_str(enum prog_state state) {
 
 void app_main(void) {
     esp_err_t ret;
-    uint8_t base_mac_addr[6] = {0};
+    uint8_t mac_addr[6] = {0};
 
     esp_log_level_set("led handler", ESP_LOG_DEBUG);
     configure_led();
@@ -84,16 +90,17 @@ void app_main(void) {
     // time sync
     struct timeval tv;
     gettimeofday(&tv, NULL);
-    if (tv.tv_sec < 60) {
-        ESP_LOGI(TAG, "Time not set, syncing");
-        if (wirelesscomm_time_init() != ESP_OK) {
-            ESP_LOGE(TAG, "Error syncing time");
-            led_set(LED_FAULT);
-            return;
-        }
-    } else {
-        ESP_LOGI(TAG, "Time already set: %lld.%06ld", tv.tv_sec, tv.tv_usec);
-    }
+    ESP_LOGI(TAG, "Time: %lld.%06ld", tv.tv_sec, tv.tv_usec);
+    // if (tv.tv_sec < 60) {
+    //     ESP_LOGI(TAG, "Time not set, syncing");
+    //     if (wirelesscomm_time_init() != ESP_OK) {
+    //         ESP_LOGE(TAG, "Error syncing time");
+    //         led_set(LED_FAULT);
+    //         return;
+    //     }
+    // } else {
+    //     ESP_LOGI(TAG, "Time already set: %lld.%06ld", tv.tv_sec, tv.tv_usec);
+    // }
 
     // wireless
     if (WL_PROTO == WL_PROTO_ESPNOW) {
@@ -107,10 +114,20 @@ void app_main(void) {
         return;
     }
 
+    // timer
+    if (!is_receiver) {
+        const esp_timer_create_args_t send_timer_args = {
+            .callback = &handle_sendtimer_isr,
+            .name = "send_timer"
+        };
+        ESP_ERROR_CHECK(esp_timer_create(&send_timer_args, &send_timer));
+        ESP_ERROR_CHECK(esp_timer_start_periodic(send_timer, 500 * 1000));
+    }
+
     // output MAC addr
-    ESP_ERROR_CHECK(esp_read_mac(base_mac_addr, ESP_MAC_WIFI_STA));
+    ESP_ERROR_CHECK(esp_read_mac(mac_addr, ESP_MAC_WIFI_STA));
     ESP_LOGI(TAG, "Device is %s", is_receiver ? "receiver" : "sender");
-    ESP_LOGI(TAG, "MAC: %x%x%x%x%x%x", base_mac_addr[0], base_mac_addr[1], base_mac_addr[2], base_mac_addr[3], base_mac_addr[4], base_mac_addr[5]);
+    ESP_LOGI(TAG, "MAC: %.02x:%.02x:%.02x:%.02x:%.02x:%.02x", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
 
     // initialization complete, do stuff
     ESP_LOGI(TAG, "Initialized");
